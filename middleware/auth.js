@@ -1,26 +1,14 @@
-const { verifyToken } = require('../utils/tokens');
-
-function requireAuth(req, res, next) {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
+const jwt = require('jsonwebtoken');
+function auth(req, res, next) {
+  const h = req.headers.authorization;
+  if (!h) return res.status(401).json({ error: 'No token' });
   try {
-    const decoded = verifyToken(header.slice(7));
-    req.user = decoded;
+    req.user = jwt.verify(h.split(' ')[1], process.env.JWT_SECRET || 'bps_secret');
     next();
-  } catch {
-    return res.status(401).json({ error: 'Invalid or expired token' });
-  }
+  } catch { res.status(401).json({ error: 'Invalid token' }); }
 }
-
-function requireAdmin(req, res, next) {
-  requireAuth(req, res, () => {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
-    next();
-  });
+function adminOnly(req, res, next) {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  next();
 }
-
-module.exports = { requireAuth, requireAdmin };
+module.exports = { auth, adminOnly };
