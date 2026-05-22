@@ -1,16 +1,12 @@
 const { Pool } = require('pg');
 
 const pool = new Pool({
-  host: 'aws-1-eu-central-1.pooler.supabase.com',
-  port: 6543,
-  database: 'postgres',
-  user: 'postgres.mkcfxvgevwrckbhpmqbd',
-  password: 'BpsSaccoV2x2026',
+  connectionString: 'postgresql://neondb_owner:npg_FnEV8HU7AfWh@ep-late-breeze-alhhge3x.c-3.eu-central-1.aws.neon.tech/neondb?sslmode=require',
   ssl: { rejectUnauthorized: false },
 });
 
 pool.query('SELECT 1').then(() => {
-  console.log('Connected to Supabase database');
+  console.log('Connected to Neon database');
 }).catch(err => {
   console.error('DB connection error:', err.message);
 });
