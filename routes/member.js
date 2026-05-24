@@ -53,6 +53,32 @@ router.get('/fines', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+router.get('/leaderboard', async (req, res) => {
+  try {
+    const { rows } = await db.query('SELECT id,full_name,balance,score,savings_streak FROM members ORDER BY balance DESC');
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/statement', async (req, res) => {
+  try {
+    const txs = await db.query(
+      "SELECT * FROM transactions WHERE member_id=$1 AND created_at >= date_trunc('month', NOW()) AND created_at < date_trunc('month', NOW()) + INTERVAL '1 month' ORDER BY created_at DESC",
+      [req.user.id]
+    );
+    const totals = await db.query(
+      "SELECT COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END),0) as total_in, COALESCE(SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END),0) as total_out, COALESCE(SUM(amount),0) as net FROM transactions WHERE member_id=$1 AND created_at >= date_trunc('month', NOW()) AND created_at < date_trunc('month', NOW()) + INTERVAL '1 month'",
+      [req.user.id]
+    );
+    res.json({
+      transactions: txs.rows,
+      totalIn: totals.rows[0].total_in,
+      totalOut: totals.rows[0].total_out,
+      net: totals.rows[0].net,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.post('/change-pin', async (req, res) => {
   const { current_pin, new_pin } = req.body;
   if (!current_pin || !new_pin) return res.status(400).json({ error: 'All fields required' });
