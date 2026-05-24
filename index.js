@@ -13,4 +13,6 @@ app.use('/api/admin', auth, adminOnly, require('./routes/admin'));
 app.use('/api/member', auth, require('./routes/member'));
 
 const PORT = process.env.PORT || 3000;
+app.use('/api/notifications', require('./routes/notifications'));
 app.listen(PORT, () => console.log('BPS Sacco v2 backend running on port ' + PORT));
+
