@@ -181,8 +181,6 @@ router.post('/fines/:id/waive', async (req, res) => {
   } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: e.message }); }
   finally { client.release(); }
 });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
 
 // Reports
 router.get('/reports', async (req, res) => {
@@ -209,4 +207,5 @@ router.get('/reports', async (req, res) => {
 });
 
 module.exports = router;
+
 
