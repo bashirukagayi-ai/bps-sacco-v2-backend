@@ -55,26 +55,46 @@ router.get('/fines', async (req, res) => {
 
 router.get('/leaderboard', async (req, res) => {
   try {
-    const { rows } = await db.query('SELECT id,full_name,balance,score,savings_streak FROM members ORDER BY balance DESC');
-    res.json(rows);
+    const { rows } = await db.query(
+      'SELECT id,full_name,balance,score,savings_streak,ROW_NUMBER() OVER (ORDER BY balance DESC) as rank FROM members ORDER BY balance DESC'
+    );
+    const currentUser = rows.find((member) => Number(member.id) === Number(req.user.id));
+    res.json({
+      members: rows.map(({ rank, ...member }) => member),
+      currentUserRank: currentUser ? Number(currentUser.rank) : null,
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.get('/statement', async (req, res) => {
+  const monthParam = String(req.query.month || '').trim();
+  let startDate;
+  if (monthParam) {
+    if (!/^\d{4}-\d{2}$/.test(monthParam)) return res.status(400).json({ error: 'Invalid month format. Use YYYY-MM' });
+    const [year, month] = monthParam.split('-').map(Number);
+    startDate = new Date(Date.UTC(year, month - 1, 1));
+    if (Number.isNaN(startDate.getTime())) return res.status(400).json({ error: 'Invalid month value' });
+  } else {
+    const now = new Date();
+    startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  }
+  const endDate = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth() + 1, 1));
+
   try {
     const txs = await db.query(
-      "SELECT * FROM transactions WHERE member_id=$1 AND created_at >= date_trunc('month', NOW()) AND created_at < date_trunc('month', NOW()) + INTERVAL '1 month' ORDER BY created_at DESC",
-      [req.user.id]
+      'SELECT * FROM transactions WHERE member_id=$1 AND created_at >= $2 AND created_at < $3 ORDER BY created_at DESC',
+      [req.user.id, startDate.toISOString(), endDate.toISOString()]
     );
     const totals = await db.query(
-      "SELECT COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END),0) as total_in, COALESCE(SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END),0) as total_out, COALESCE(SUM(amount),0) as net FROM transactions WHERE member_id=$1 AND created_at >= date_trunc('month', NOW()) AND created_at < date_trunc('month', NOW()) + INTERVAL '1 month'",
-      [req.user.id]
+      'SELECT COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END),0) as total_in, COALESCE(SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END),0) as total_out, COALESCE(SUM(amount),0) as net FROM transactions WHERE member_id=$1 AND created_at >= $2 AND created_at < $3',
+      [req.user.id, startDate.toISOString(), endDate.toISOString()]
     );
     res.json({
       transactions: txs.rows,
       totalIn: totals.rows[0].total_in,
       totalOut: totals.rows[0].total_out,
       net: totals.rows[0].net,
+      month: `${startDate.getUTCFullYear()}-${String(startDate.getUTCMonth() + 1).padStart(2, '0')}`,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
