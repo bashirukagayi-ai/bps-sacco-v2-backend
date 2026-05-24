@@ -25,7 +25,7 @@ router.get('/dashboard', async (req, res) => {
 // Members
 router.get('/members', async (req, res) => {
   try {
-    const { rows } = await db.query('SELECT id,full_name,phone,role,balance,score,savings_streak,status FROM members ORDER BY full_name');
+    const { rows } = await db.query('SELECT id,full_name,phone,role,balance,score,savings_streak,status FROM members ORDER BY balance DESC');
     res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -63,6 +63,37 @@ router.get('/loans', async (req, res) => {
     const { rows } = await db.query('SELECT l.*,m.full_name as member_name FROM loans l JOIN members m ON m.id=l.member_id ORDER BY l.created_at DESC');
     res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/loans', async (req, res) => {
+  const { member_id, amount, note } = req.body;
+  if (!member_id || !amount) return res.status(400).json({ error: 'member_id and amount are required' });
+
+  const principal = Number(amount);
+  if (!Number.isFinite(principal) || principal <= 0) {
+    return res.status(400).json({ error: 'Amount must be a positive number' });
+  }
+
+  const interest = Math.round(principal * 5 / 100);
+  const total_due = principal + interest;
+
+  try {
+    await db.query('BEGIN');
+    await db.query(
+      "INSERT INTO loans (member_id,amount,interest_amount,total_due,status,approved_by,due_date) VALUES ($1,$2,$3,$4,'active',$5,NOW()+INTERVAL '90 days')",
+      [member_id, principal, interest, total_due, req.user.id]
+    );
+    await db.query(
+      'INSERT INTO transactions (member_id,type,amount,note,recorded_by) VALUES ($1,$2,$3,$4,$5)',
+      [member_id, 'loan_disbursement', principal, note || 'Admin issued loan', req.user.id]
+    );
+    await db.query('UPDATE members SET balance=balance+$1 WHERE id=$2', [principal, member_id]);
+    await db.query('COMMIT');
+    res.json({ success: true });
+  } catch (e) {
+    await db.query('ROLLBACK');
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.post('/loans/:id/approve', async (req, res) => {

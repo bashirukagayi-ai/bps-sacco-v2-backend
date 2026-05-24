@@ -6,8 +6,9 @@ router.get('/dashboard', async (req, res) => {
   try {
     const { rows } = await db.query('SELECT balance,score,savings_streak FROM members WHERE id=$1', [req.user.id]);
     const loans = await db.query("SELECT COUNT(*) as count FROM loans WHERE member_id=$1 AND status='active'", [req.user.id]);
+    const fines = await db.query("SELECT COUNT(*) as count FROM fines WHERE member_id=$1 AND status='unpaid'", [req.user.id]);
     const txs = await db.query('SELECT * FROM transactions WHERE member_id=$1 ORDER BY created_at DESC LIMIT 10', [req.user.id]);
-    res.json({ ...rows[0], activeLoans: loans.rows[0].count, recentTransactions: txs.rows });
+    res.json({ ...rows[0], activeLoans: loans.rows[0].count, unpaidFines: fines.rows[0].count, recentTransactions: txs.rows });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
