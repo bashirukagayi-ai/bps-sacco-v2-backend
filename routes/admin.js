@@ -146,17 +146,41 @@ router.get('/fines', async (req, res) => {
 
 router.post('/fines', async (req, res) => {
   const { member_id, amount, reason } = req.body;
-  if (!member_id || !amount || !reason) return res.status(400).json({ error: 'All fields required' });
+  if (!member_id || !amount || !reason) return res.status(400).json({ error: 'Required fields missing' });
+  const client = await db.connect();
   try {
-    await db.query('INSERT INTO fines (member_id,amount,reason,issued_by) VALUES ($1,$2,$3,$4)', [member_id, amount, reason, req.user.id]);
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      "INSERT INTO fines (member_id,amount,reason,status,issued_by) VALUES ($1,$2,$3,'paid',$4) RETURNING *",
+      [member_id, amount, reason, req.user.id]
+    );
+    await client.query('UPDATE members SET balance=GREATEST(0,balance-$1) WHERE id=$2', [amount, member_id]);
+    await client.query(
+      "INSERT INTO transactions (member_id,type,amount,note,recorded_by) VALUES ($1,'fine_payment',$2,$3,$4)",
+      [member_id, amount, 'Fine: ' + reason, req.user.id]
+    );
+    await client.query('COMMIT');
+    res.status(201).json(rows[0]);
+  } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: e.message }); }
+  finally { client.release(); }
 });
 
 router.post('/fines/:id/waive', async (req, res) => {
+  const client = await db.connect();
   try {
-    await db.query("UPDATE fines SET status='waived' WHERE id=$1", [req.params.id]);
-    res.json({ success: true });
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT * FROM fines WHERE id=$1', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Fine not found' });
+    const fine = rows[0];
+    await client.query("UPDATE fines SET status='waived' WHERE id=$1", [fine.id]);
+    if (fine.status === 'paid') {
+      await client.query('UPDATE members SET balance=balance+$1 WHERE id=$2', [fine.amount, fine.member_id]);
+    }
+    await client.query('COMMIT');
+    res.json({ message: 'Fine waived' });
+  } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: e.message }); }
+  finally { client.release(); }
+});
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -185,3 +209,4 @@ router.get('/reports', async (req, res) => {
 });
 
 module.exports = router;
+
